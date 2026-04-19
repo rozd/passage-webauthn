@@ -49,7 +49,7 @@ jobs:
       - name: Setup Swift
         uses: swift-actions/setup-swift@v2
         with:
-          swift-version: '6.2'
+          swift-version: '6.3'
 
       - name: Cache Swift packages
         uses: actions/cache@v4
@@ -58,9 +58,9 @@ jobs:
             .build/checkouts
             .build/repositories
             .build/Build
-          key: ${{ runner.os }}-swift-6.2-spm-${{ hashFiles('Package.resolved') }}
+          key: ${{ runner.os }}-swift-6.3-spm-${{ hashFiles('Package.resolved') }}
           restore-keys: |
-            ${{ runner.os }}-swift-6.2-spm-
+            ${{ runner.os }}-swift-6.3-spm-
 
       - name: Build and test with coverage
         run: swift test --enable-code-coverage
