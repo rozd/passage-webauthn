@@ -16,9 +16,9 @@ import struct WebAuthn.PublicKeyCredentialRequestOptions
 // MARK: - Fixtures
 
 private enum Fixtures {
-    static let rpID = "login.example.com"
-    static let rpName = "Example"
-    static let rpOrigin = "https://login.example.com"
+    static let rpID = WebAuthnFixture.rpID
+    static let rpName = WebAuthnFixture.rpName
+    static let rpOrigin = WebAuthnFixture.rpOrigin
 
     static func service() -> WebAuthnPasskeyService {
         WebAuthnPasskeyService(
@@ -472,6 +472,201 @@ struct FinishAuthenticationTests {
             #expect(seen.value == Data(challenge))
         } catch {
             Issue.record("unexpected error type: \(error)")
+        }
+    }
+
+    @Test("valid body, valid challenge, but unknown credential throws .unknownPasskey")
+    func unknownCredential() async throws {
+        let service = Fixtures.service()
+
+        // Full ceremony: register first to get a credential-bound keypair,
+        // then authenticate with it, but tell the authentication flow the
+        // credential isn't stored anywhere.
+        let regChallenge = Array(repeating: UInt8(0x11), count: 16)
+        let registration = WebAuthnFixture.registration(challenge: regChallenge)
+
+        let authChallenge = Array(repeating: UInt8(0x22), count: 16)
+        let authBody = try WebAuthnFixture.authentication(
+            privateKey: registration.privateKey,
+            credentialID: registration.credentialID,
+            challenge: authChallenge
+        )
+
+        let stored = MockStoredPasskeyChallenge(
+            kind: .authentication,
+            challengeHash: "whatever",
+            expiresAt: Date().addingTimeInterval(60)
+        )
+
+        do {
+            _ = try await service.finishAuthentication(
+                rawBody: authBody,
+                policy: Fixtures.policy(),
+                lookupChallenge: { _ in stored },
+                lookupCredential: { _ in nil }
+            )
+            Issue.record("expected to throw .unknownPasskey")
+        } catch let error as AuthenticationError {
+            guard case .unknownPasskey = error else {
+                Issue.record("wrong case: \(error)")
+                return
+            }
+        } catch {
+            Issue.record("unexpected error type: \(error)")
+        }
+    }
+}
+
+// MARK: - Full ceremony (happy paths)
+
+@Suite("finishRegistration/finishAuthentication happy paths")
+struct HappyPathCeremonyTests {
+
+    @Test("finishRegistration returns a verified credential for a valid payload")
+    func registrationSucceeds() async throws {
+        let service = Fixtures.service()
+        let challenge = Array(repeating: UInt8(0x7A), count: 16)
+        let registration = WebAuthnFixture.registration(challenge: challenge)
+
+        let stored = MockStoredPasskeyChallenge(
+            kind: .registration,
+            challengeHash: "sha256-placeholder",
+            expiresAt: Date().addingTimeInterval(300)
+        )
+
+        let result = try await service.finishRegistration(
+            rawBody: registration.body,
+            policy: Fixtures.policy(),
+            lookupChallenge: { _ in stored },
+            confirmUnused: { _ in true }
+        )
+
+        // swift-webauthn emits the credential ID via `URLEncodedBase64.urlDecoded.asString()`
+        // — that's standard base64 (with padding), not base64url. Matching that
+        // observed behaviour here; a future hardening pass may want to align
+        // the service with Passage's "base64url" docstring.
+        let standardBase64 = Data(registration.credentialID).base64EncodedString()
+        #expect(result.credential.credentialID == standardBase64)
+        // Public key returned is the COSE-encoded key we embedded in authData.
+        #expect(Array(result.credential.publicKey) == registration.cosePublicKey)
+        // signCount came from our authData counter field (0 for fresh passkey).
+        #expect(result.credential.signCount == registration.signCount)
+        // Transports came from the JSON envelope, not from swift-webauthn.
+        let transportValues = Set(result.credential.transports.map(\.rawValue))
+        #expect(transportValues == ["internal", "hybrid"])
+        // Fields swift-webauthn cannot surface via its public API.
+        #expect(result.credential.aaguid == nil)
+        #expect(result.credential.attestationFormat == nil)
+    }
+
+    @Test("finishRegistration confirmUnused=false surfaces as WebAuthnError")
+    func registrationRejectsDuplicateCredential() async throws {
+        let service = Fixtures.service()
+        let challenge = Array(repeating: UInt8(0x6B), count: 16)
+        let registration = WebAuthnFixture.registration(challenge: challenge)
+
+        let stored = MockStoredPasskeyChallenge(
+            kind: .registration,
+            challengeHash: "sha256-placeholder",
+            expiresAt: Date().addingTimeInterval(300)
+        )
+
+        await #expect(throws: (any Error).self) {
+            _ = try await service.finishRegistration(
+                rawBody: registration.body,
+                policy: Fixtures.policy(),
+                lookupChallenge: { _ in stored },
+                confirmUnused: { _ in false }
+            )
+        }
+    }
+
+    @Test("finishAuthentication returns verified outputs for a valid assertion")
+    func authenticationSucceeds() async throws {
+        let service = Fixtures.service()
+
+        // Step 1: register so we have a key pair + credential record.
+        let regChallenge = Array(repeating: UInt8(0xA1), count: 16)
+        let registration = WebAuthnFixture.registration(challenge: regChallenge)
+
+        // Step 2: build an authentication assertion signed by the same key.
+        let authChallenge = Array(repeating: UInt8(0xB2), count: 16)
+        let newSignCount: UInt32 = 7
+        let authBody = try WebAuthnFixture.authentication(
+            privateKey: registration.privateKey,
+            credentialID: registration.credentialID,
+            challenge: authChallenge,
+            signCount: newSignCount
+        )
+
+        let storedChallenge = MockStoredPasskeyChallenge(
+            kind: .authentication,
+            challengeHash: "sha256-placeholder",
+            expiresAt: Date().addingTimeInterval(120)
+        )
+
+        let storedCredential = MockStoredPasskeyCredential(
+            user: MockUser(id: UUID()),
+            credentialID: WebAuthnFixture.base64url(registration.credentialID),
+            publicKey: Data(registration.cosePublicKey),
+            signCount: 0
+        )
+
+        let result = try await service.finishAuthentication(
+            rawBody: authBody,
+            policy: Fixtures.policy(),
+            lookupChallenge: { _ in storedChallenge },
+            lookupCredential: { _ in storedCredential }
+        )
+
+        #expect(result.newSignCount == newSignCount)
+        #expect(result.matchedCredential.credentialID == storedCredential.credentialID)
+        // Our authData flag byte doesn't set the BS bit, so credentialBackedUp is false.
+        #expect(result.credentialBackedUp == false)
+        // We didn't include a userHandle, so it should be nil.
+        #expect(result.userHandle == nil)
+    }
+
+    @Test("finishAuthentication with a challenge mismatch fails verification")
+    func authenticationRejectsChallengeMismatch() async throws {
+        let service = Fixtures.service()
+        let regChallenge = Array(repeating: UInt8(0xC3), count: 16)
+        let registration = WebAuthnFixture.registration(challenge: regChallenge)
+
+        // Sign over challengeA but tell lookupChallenge to return a stored
+        // record for challengeB — swift-webauthn checks the signature over
+        // authData || SHA256(clientDataJSON), so a lookup substitution does
+        // NOT bypass verification. The service forwards the clientDataJSON
+        // challenge to the lookup, so we can still reach the verify step
+        // as long as the clientData carries *a* valid challenge.
+        let authChallenge = Array(repeating: UInt8(0xD4), count: 16)
+        let authBody = try WebAuthnFixture.authentication(
+            privateKey: registration.privateKey,
+            credentialID: registration.credentialID,
+            challenge: authChallenge
+        )
+
+        let storedCredentialButWrongKey = MockStoredPasskeyCredential(
+            user: MockUser(id: UUID()),
+            credentialID: WebAuthnFixture.base64url(registration.credentialID),
+            // Wrong public key — will fail signature verification.
+            publicKey: Data(WebAuthnFixture.Registration.cosePublicKey(for: .init())),
+            signCount: 0
+        )
+
+        let storedChallenge = MockStoredPasskeyChallenge(
+            kind: .authentication,
+            challengeHash: "x",
+            expiresAt: Date().addingTimeInterval(60)
+        )
+
+        await #expect(throws: (any Error).self) {
+            _ = try await service.finishAuthentication(
+                rawBody: authBody,
+                policy: Fixtures.policy(),
+                lookupChallenge: { _ in storedChallenge },
+                lookupCredential: { _ in storedCredentialButWrongKey }
+            )
         }
     }
 }

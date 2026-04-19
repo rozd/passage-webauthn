@@ -18,6 +18,8 @@ let package = Package(
         .package(url: "https://github.com/vapor/vapor.git", from: "4.119.2"),
         .package(url: "https://github.com/vapor-community/passage.git", from: "0.1.0"),
         .package(url: "https://github.com/swift-server/webauthn-swift.git", from: "1.0.0-beta.1"),
+        .package(url: "https://github.com/apple/swift-crypto.git", "3.8.1"..<"5.0.0"),
+        .package(url: "https://github.com/unrelentingtech/SwiftCBOR.git", from: "0.4.7"),
     ],
     targets: [
         .target(name: "PassageWebAuthn", dependencies: [
@@ -28,6 +30,8 @@ let package = Package(
         .testTarget(name: "PassageWebAuthnTests", dependencies: [
             "PassageWebAuthn",
             .product(name: "VaporTesting", package: "vapor"),
+            .product(name: "Crypto",       package: "swift-crypto"),
+            "SwiftCBOR",
         ]),
     ]
 )
