@@ -1,7 +1,7 @@
 # passage-webauthn
 
 [![Release](https://img.shields.io/github/v/release/rozd/passage-webauthn)](https://github.com/rozd/passage-webauthn/releases)
-[![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
+[![Swift 6.3](https://img.shields.io/badge/Swift-6.3-orange.svg)](https://swift.org)
 [![License](https://img.shields.io/github/license/rozd/passage-webauthn)](LICENSE)
 
 WebAuthn passkey implementation for [Passage](https://github.com/vapor-community/passage) authentication framework.
