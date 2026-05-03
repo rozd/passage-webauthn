@@ -27,6 +27,7 @@ struct MockStoredPasskeyChallenge: StoredPasskeyChallenge {
     typealias AssociatedUser = MockUser
 
     var id: UUID? = UUID()
+    var identifier: Identifier? = nil
     var user: MockUser? = nil
     var kind: PasskeyChallengeKind
     var challengeHash: String

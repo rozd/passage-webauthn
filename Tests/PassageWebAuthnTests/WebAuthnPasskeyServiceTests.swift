@@ -528,7 +528,9 @@ struct HappyPathCeremonyTests {
         let challenge = Array(repeating: UInt8(0x7A), count: 16)
         let registration = WebAuthnFixture.registration(challenge: challenge)
 
+        let storedID = UUID()
         let stored = MockStoredPasskeyChallenge(
+            id: storedID,
             kind: .registration,
             challengeHash: "sha256-placeholder",
             expiresAt: Date().addingTimeInterval(300)
@@ -541,6 +543,11 @@ struct HappyPathCeremonyTests {
             confirmUnused: { _ in true }
         )
 
+        // The service must propagate the stored challenge back so core can
+        // consume the same record it matched against (one-shot semantics) —
+        // verify by ID rather than identity since `any StoredPasskeyChallenge`
+        // is a protocol existential.
+        #expect((result.matchedChallenge as? MockStoredPasskeyChallenge)?.id == storedID)
         // The service normalizes the credential ID to base64url so it matches
         // the format the authenticator echoes back during the assertion (see
         // `WebAuthnPasskeyService.finishAuthentication`). Without this,
@@ -600,13 +607,17 @@ struct HappyPathCeremonyTests {
             signCount: newSignCount
         )
 
+        let challengeID = UUID()
         let storedChallenge = MockStoredPasskeyChallenge(
+            id: challengeID,
             kind: .authentication,
             challengeHash: "sha256-placeholder",
             expiresAt: Date().addingTimeInterval(120)
         )
 
+        let credentialID = UUID()
         let storedCredential = MockStoredPasskeyCredential(
+            id: credentialID,
             user: MockUser(id: UUID()),
             credentialID: WebAuthnFixture.base64url(registration.credentialID),
             publicKey: Data(registration.cosePublicKey),
@@ -622,6 +633,11 @@ struct HappyPathCeremonyTests {
 
         #expect(result.newSignCount == newSignCount)
         #expect(result.matchedCredential.credentialID == storedCredential.credentialID)
+        // Both stored records must propagate back to core so it can consume the
+        // challenge and update the credential's sign count by the records it
+        // already located in storage.
+        #expect((result.matchedCredential as? MockStoredPasskeyCredential)?.id == credentialID)
+        #expect((result.matchedChallenge as? MockStoredPasskeyChallenge)?.id == challengeID)
         // Our authData flag byte doesn't set the BS bit, so credentialBackedUp is false.
         #expect(result.credentialBackedUp == false)
         // We didn't include a userHandle, so it should be nil.

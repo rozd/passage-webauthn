@@ -53,18 +53,21 @@ let passkeyService = WebAuthnPasskeyService(
 Then pass it to Passage during configuration:
 
 ```swift
-app.passage.configure(
+try await app.passage.configure(
     services: .init(
-        passkeyService: passkeyService,
+        store: store,
+        emailDelivery: emailDelivery,
+        phoneDelivery: phoneDelivery,
+        passkey: passkeyService,
         // ... other services
     ),
     configuration: .init(
         passkey: .init(
             policy: .init(
-                userVerification: .required,
+                timeout: .seconds(60),
                 attestation: .none,
-                timeout: 60,
-                supportedAlgorithms: [.algES256, .algRS256]
+                userVerification: .required,
+                supportedAlgorithms: [.ES256, .RS256]
             )
         ),
         // ... other configuration
@@ -101,13 +104,14 @@ The `Passage.Configuration.Passkey.Policy` passed to each method controls:
 |--------|--------|-------------|
 | `userVerification` | `.required`, `.preferred`, `.discouraged` | Whether PIN/biometric is required |
 | `attestation` | `.none`, `.indirect`, `.direct`, `.enterprise` | Attestation conveyance preference |
-| `timeout` | `TimeInterval` | Browser ceremony timeout in seconds |
-| `supportedAlgorithms` | `[COSEAlgorithmIdentifier]` | Accepted public key algorithms (e.g. `.algES256`, `.algRS256`) |
+| `timeout` | `Duration?` | Browser ceremony timeout (e.g. `.seconds(60)`) |
+| `supportedAlgorithms` | `[COSEAlgorithmIdentifier]` | Accepted public key algorithms (e.g. `.ES256`, `.RS256`). Algorithms unsupported by `swift-webauthn` (`.EdDSA`, `.ESP256`, `.ESP384`, `.ESP512`) are silently dropped. |
 
 ## Requirements
 
-- Swift 6.0+
+- Swift 6.3+
 - macOS 13+ / Linux
+- Passage 0.5.1+
 - Vapor 4.119+
 - webauthn-swift 1.0.0-beta.1+
 
