@@ -541,12 +541,13 @@ struct HappyPathCeremonyTests {
             confirmUnused: { _ in true }
         )
 
-        // swift-webauthn emits the credential ID via `URLEncodedBase64.urlDecoded.asString()`
-        // — that's standard base64 (with padding), not base64url. Matching that
-        // observed behaviour here; a future hardening pass may want to align
-        // the service with Passage's "base64url" docstring.
-        let standardBase64 = Data(registration.credentialID).base64EncodedString()
-        #expect(result.credential.credentialID == standardBase64)
+        // The service normalizes the credential ID to base64url so it matches
+        // the format the authenticator echoes back during the assertion (see
+        // `WebAuthnPasskeyService.finishAuthentication`). Without this,
+        // registration stored standard base64 but authentication looked up
+        // base64url and `lookupCredential` always missed.
+        let expectedBase64URL = WebAuthnFixture.base64url(registration.credentialID)
+        #expect(result.credential.credentialID == expectedBase64URL)
         // Public key returned is the COSE-encoded key we embedded in authData.
         #expect(Array(result.credential.publicKey) == registration.cosePublicKey)
         // signCount came from our authData counter field (0 for fresh passkey).
@@ -625,6 +626,69 @@ struct HappyPathCeremonyTests {
         #expect(result.credentialBackedUp == false)
         // We didn't include a userHandle, so it should be nil.
         #expect(result.userHandle == nil)
+    }
+
+    @Test("registration→authentication round-trips the credential ID through the same key")
+    func credentialIDRoundTripsThroughLookup() async throws {
+        // Regression test: previously, registration stored the credentialID
+        // as standard base64 (e.g. `AQIDBA==`) while authentication's
+        // `lookupCredential` was invoked with base64url (e.g. `AQIDBA`).
+        // Result: a credential persisted by the registration ceremony could
+        // never be located by the authentication ceremony, so guest-registered
+        // passkeys could not log in. This test wires the two ceremonies
+        // together and asserts the round-trip key matches.
+        let service = Fixtures.service()
+
+        let regChallenge = Array(repeating: UInt8(0x11), count: 16)
+        let registration = WebAuthnFixture.registration(challenge: regChallenge)
+
+        let regChallengeStored = MockStoredPasskeyChallenge(
+            kind: .registration,
+            challengeHash: "x",
+            expiresAt: Date().addingTimeInterval(120)
+        )
+        let regResult = try await service.finishRegistration(
+            rawBody: registration.body,
+            policy: Fixtures.policy(),
+            lookupChallenge: { _ in regChallengeStored },
+            confirmUnused: { _ in true }
+        )
+        let storedCredentialID = regResult.credential.credentialID
+
+        let authChallenge = Array(repeating: UInt8(0x22), count: 16)
+        let authBody = try WebAuthnFixture.authentication(
+            privateKey: registration.privateKey,
+            credentialID: registration.credentialID,
+            challenge: authChallenge
+        )
+
+        let authChallengeStored = MockStoredPasskeyChallenge(
+            kind: .authentication,
+            challengeHash: "y",
+            expiresAt: Date().addingTimeInterval(120)
+        )
+        let storedCredential = MockStoredPasskeyCredential(
+            user: MockUser(id: UUID()),
+            credentialID: storedCredentialID,
+            publicKey: Data(registration.cosePublicKey),
+            signCount: 0
+        )
+
+        final class LookupKey: @unchecked Sendable {
+            var value: String?
+        }
+        let captured = LookupKey()
+        _ = try await service.finishAuthentication(
+            rawBody: authBody,
+            policy: Fixtures.policy(),
+            lookupChallenge: { _ in authChallengeStored },
+            lookupCredential: { id in
+                captured.value = id
+                return id == storedCredentialID ? storedCredential : nil
+            }
+        )
+
+        #expect(captured.value == storedCredentialID)
     }
 
     @Test("finishAuthentication with a challenge mismatch fails verification")
