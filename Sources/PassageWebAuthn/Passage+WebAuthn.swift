@@ -41,8 +41,14 @@ extension PasskeyCredential {
         uvInitialized: Bool,
         transports: [AuthenticatorTransport]
     ) {
+        // swift-webauthn emits `Credential.id` as standard base64 (with `+`,
+        // `/`, `=`), but the authenticator's assertion `id` arrives as
+        // base64url and that's what `finishAuthentication` forwards to
+        // `lookupCredential`. Normalize storage to base64url so the keys
+        // match — also matches Passage's `PasskeyCredential.credentialID`
+        // docstring ("base64url-encoded credential ID").
         self.init(
-            credentialID:      credential.id,
+            credentialID:      EncodedBase64(credential.id).urlEncoded.asString(),
             publicKey:         Data(credential.publicKey),
             signCount:         credential.signCount,
             uvInitialized:     uvInitialized,
