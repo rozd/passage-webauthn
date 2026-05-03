@@ -11,6 +11,12 @@ public struct WebAuthnPasskeyService: Passage.PasskeyService {
     }
 
     public func beginRegistration(
+        // `Passage::PublicKeyCredentialUserEntity` (with `::`, not `.`) is
+        // the module-qualified lookup form. We need it here because both
+        // `Passage` and `WebAuthn` export a top-level type with this exact
+        // name, AND `Passage` is both a module and a struct — so plain
+        // `Passage.PublicKeyCredentialUserEntity` resolves to the struct's
+        // (non-existent) nested type rather than the module's type.
         with user: Passage::PublicKeyCredentialUserEntity,
         policy: Passage.Configuration.Passkey.Policy,
         challengeTTL: TimeInterval
