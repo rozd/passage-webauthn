@@ -1,5 +1,5 @@
 {
-  "originHash" : "6ac2306026774fbc9880ec94dcbe851863dc49f9917fc39dce94bdd527491ba9",
+  "originHash" : "563b2c5450923feace767eda057f583aefd751eb3d868932655c447caf4ef0cb",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -78,8 +78,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/vapor-community/passage.git",
       "state" : {
-        "revision" : "5f7afbe063c4f2ba8595b6efd4292dbaed5c2672",
-        "version" : "0.7.6"
+        "revision" : "ca110e32e0da0c4f7f1c2f1a7f2a7fff45e8d7e7",
+        "version" : "0.7.7"
       }
     },
     {
@@ -204,8 +204,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-log.git",
       "state" : {
-        "revision" : "3ffafb9722d5d918c614feb496c8789a3b59d222",
-        "version" : "1.15.0"
+        "revision" : "9c6fb14227f55d8f711ce3847dc2f419fb0ecacb",
+        "version" : "1.15.1"
       }
     },
     {
