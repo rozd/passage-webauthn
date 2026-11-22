@@ -137,6 +137,15 @@
       }
     },
     {
+      "identity" : "swift-cbor",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/brokenhandsio/swift-cbor.git",
+      "state" : {
+        "revision" : "bf0addcfeb59d5e49c519ca6c6bbabb8f47a1b92",
+        "version" : "1.0.0-rc.1"
+      }
+    },
+    {
       "identity" : "swift-certificates",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-certificates.git",
@@ -321,8 +330,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swift-server/webauthn-swift.git",
       "state" : {
-        "revision" : "909cf4193cde7d64196553c4245ab647a68aaaca",
-        "version" : "1.0.0-beta.1"
+        "revision" : "cc30f39fa2c5e9dafcabc957c5a5ed6dcecf40bd",
+        "version" : "1.0.0-beta.4"
       }
     },
     {
